@@ -54,17 +54,13 @@ footer{grid-column:1/-1;font-size:.85rem;opacity:.65}
 <main>
   <div class="id"><span>Riky Tri Pamungkas</span><span>NIM 20240140225</span></div>
   <section>
-    <h1>Find<br>Me</h1>
+    <h1>Di mana<br>titik itu?</h1>
     <p class="lead">Ketik nama tempat. Peta akan menaruh pin dan menunjukkan negara, provinsi, kecamatan, serta koordinatnya.</p>
     <label for="q">Lokasi</label>
     <div class="row">
       <input id="q" type="text" placeholder="contoh: Kasihan, Bantul" autocomplete="off" value="Kasihan, Bantul">
       <button id="go" type="button">Cari lokasi</button>
     </div>
-    <details class="key" id="keybox">
-      <summary>API key MapTiler</summary>
-      <input id="key" type="password" placeholder="Tempel API key dari cloud.maptiler.com" autocomplete="off">
-    </details>
     <div id="alts" class="alts"></div>
     <p id="msg" class="msg" role="status"></p>
   </section>
@@ -81,7 +77,7 @@ footer{grid-column:1/-1;font-size:.85rem;opacity:.65}
     </dl>
     <details class="raw"><summary>Lihat respons JSON mentah</summary><pre id="raw">{}</pre></details>
   </section>
-  <footer>Data: MapTiler Geocoding API (api.maptiler.com/geocoding)</footer>
+  <footer>Data: MapTiler Geocoding API, lewat backend Express (/api/lokasi)</footer>
 </main>
 
 <script>
@@ -97,32 +93,16 @@ let results = [];
   $('#map').innerHTML = s;
 })();
 
-// --- API key disimpan di browser, bukan di repo ---
-try { $('#key').value = localStorage.getItem('mt_key') || ''; } catch(e){}
-if (!$('#key').value) $('#keybox').open = true;
+function show(r){
+  $('#o-name').textContent = r.lokasi;
+  $('#o-country').textContent = r.negara;
+  $('#o-region').textContent = r.provinsi;
+  $('#o-district').textContent = r.kecamatan;
+  $('#o-lon').textContent = Number(r.longitude).toFixed(6);
+  $('#o-lat').textContent = Number(r.latitude).toFixed(6);
+  $('#raw').textContent = JSON.stringify(r.raw, null, 2);
 
-const typeOf = c => (c.place_type && c.place_type[0]) || (c.id || '').split('.')[0];
-function find(f, types){
-  const all = [f, ...(f.context || [])];
-  for (const t of types){
-    const hit = all.find(c => typeOf(c) === t);
-    if (hit) return hit.text || hit.place_name || '-';
-  }
-  return '-';
-}
-
-function show(f){
-  const [lon, lat] = f.center;
-  $('#o-name').textContent = f.place_name || f.text;
-  $('#o-country').textContent = find(f, ['country']);
-  $('#o-region').textContent = find(f, ['region']);
-  // Kecamatan: level administrasi di bawah kabupaten/kota, tergantung data tiap negara
-  $('#o-district').textContent = find(f, ['municipal_district','municipality','joint_municipality','county','locality','subregion']);
-  $('#o-lon').textContent = lon.toFixed(6);
-  $('#o-lat').textContent = lat.toFixed(6);
-  $('#raw').textContent = JSON.stringify(f, null, 2);
-
-  const x = lon + 180, y = 90 - lat;
+  const x = r.longitude + 180, y = 90 - r.latitude;
   $('#pin').style.display = '';
   $('#hx').setAttribute('y1', y); $('#hx').setAttribute('y2', y);
   $('#hy').setAttribute('x1', x); $('#hy').setAttribute('x2', x);
@@ -134,35 +114,32 @@ function show(f){
 function message(t, err){ const m = $('#msg'); m.textContent = t; m.className = 'msg' + (err ? ' err' : ''); }
 
 async function search(){
-  const q = $('#q').value.trim(), key = $('#key').value.trim();
+  const q = $('#q').value.trim();
   if (!q) return message('Isi nama lokasi dulu.', true);
-  if (!key){ $('#keybox').open = true; return message('Isi API key MapTiler dulu.', true); }
-  try { localStorage.setItem('mt_key', key); } catch(e){}
   message('Mencari...');
   try {
-    const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(q)}.json?key=${encodeURIComponent(key)}&language=id&limit=5`;
-    const res = await fetch(url);
-    if (res.status === 401 || res.status === 403) throw new Error('API key ditolak. Periksa key dan pengaturan allowed origins.');
-    if (!res.ok) throw new Error('Server membalas status ' + res.status);
+    const res = await fetch('/api/lokasi?q=' + encodeURIComponent(q));
     const data = await res.json();
-    results = data.features || [];
-    if (!results.length){ $('#alts').innerHTML = ''; return message('Lokasi tidak ditemukan. Coba nama yang lebih spesifik.', true); }
+    if (!res.ok) throw new Error(data.message || 'Server membalas status ' + res.status);
+    results = data.hasil;
     const box = $('#alts'); box.innerHTML = '';
-    results.forEach((f, i) => {
+    results.forEach((r, i) => {
       const b = document.createElement('button');
-      b.type = 'button'; b.textContent = f.text || f.place_name;
-      b.title = f.place_name; b.setAttribute('aria-pressed', i === 0);
-      b.onclick = () => { [...box.children].forEach(x => x.setAttribute('aria-pressed', 'false')); b.setAttribute('aria-pressed', 'true'); show(f); };
+      b.type = 'button'; b.textContent = r.raw.text || r.lokasi;
+      b.title = r.lokasi; b.setAttribute('aria-pressed', i === 0);
+      b.onclick = () => { [...box.children].forEach(x => x.setAttribute('aria-pressed', 'false')); b.setAttribute('aria-pressed', 'true'); show(r); };
       box.appendChild(b);
     });
     show(results[0]);
     message(results.length + ' hasil ditemukan. Pilih hasil lain di atas bila perlu.');
   } catch (e) {
+    $('#alts').innerHTML = '';
     message(e.message || 'Gagal mengambil data.', true);
   }
 }
 $('#go').onclick = search;
 $('#q').addEventListener('keydown', e => { if (e.key === 'Enter') search(); });
+search();
 </script>
 </body>
 </html>
